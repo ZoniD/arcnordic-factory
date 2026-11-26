@@ -1,0 +1,12 @@
+[
+  {"name": "Ideas",              "color": "FDE7C8", "description": "Du: grov idé"},
+  {"name": "Refining",           "color": "E9DDFB", "description": "n8n: AI-trinnet omskriver opgaven"},
+  {"name": "Ready for approval", "color": "FDE7C8", "description": "Du: læs AI'ens version, kommentér eller godkend"},
+  {"name": "Approved",           "color": "FCE1E8", "description": "Kun du: venter på fabrikken"},
+  {"name": "Building",           "color": "E9DDFB", "description": "n8n: kodeagenten arbejder på issue-N"},
+  {"name": "Waiting for you",    "color": "FDE7C8", "description": "Du: agenten har et spørgsmål"},
+  {"name": "Stuck",              "color": "D73A4A", "description": "Du: fejlet eller over 30 min. Retry eller luk"},
+  {"name": "Your QA",            "color": "FDE7C8", "description": "Du: review pull requesten"},
+  {"name": "Done",               "color": "0E8A16", "description": "n8n: merget eller lukket"},
+  {"name": "Flagged",            "color": "B60205", "description": "PR ændrer tests eller .github/"}
+]

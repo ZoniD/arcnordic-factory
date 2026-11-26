@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+*.log
+factory/runner/.venv/
+factory/runner/work/
+__pycache__/
