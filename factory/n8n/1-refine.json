@@ -1,0 +1,438 @@
+{
+  "id": "factoryRefine001",
+  "name": "Fabrik 1 – Refine (Ideas → Ready for approval)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "name": "Hvert 2. minut",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ],
+      "id": "fe8c1857-2e71-e1eb-a8a9-35782742053e"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/repos/ZoniD/arcnordic-factory/issues?state=open&per_page=100",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "name": "Hent åbne issues",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "id": "e318f7d9-478a-7e78-7bdc-6ec2f0804759",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ghFactoryCred001",
+          "name": "GitHub arcnordic-factory"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/repos/ZoniD/arcnordic-factory/issues/comments?sort=created&direction=desc&per_page=100",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "name": "Hent kommentarer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        300
+      ],
+      "id": "6793cb80-a423-03ff-364f-19ebd847c98b",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ghFactoryCred001",
+          "name": "GitHub arcnordic-factory"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const MARK_REFINE = \"<!-- factory:refine -->\";\nconst MARK_FAIL = \"<!-- factory:refine-fejl -->\";\nconst MARK_START = \"<!-- factory:start -->\";\nconst MARK_PR = \"<!-- factory:pr -->\";\nconst labelsOf = (i) => i.labels.map((l) => l.name);\nconst issueNo = (c) => Number(c.issue_url.split('/').pop());\n\n// Finder opgaver til AI-trinnet:\n//  - nye opgaver med labelen Ideas\n//  - opgaver i Ready for approval, hvor din seneste kommentar er nyere end AI'ens\nconst issues = JSON.parse($('Hent åbne issues').first().json.data).filter((i) => !i.pull_request);\nconst comments = JSON.parse($('Hent kommentarer').first().json.data);\nconst byIssue = {};\nfor (const c of comments) (byIssue[issueNo(c)] ??= []).push(c);\n\nconst out = [];\nfor (const i of issues) {\n  const labels = labelsOf(i);\n  const cs = (byIssue[i.number] || []).sort((a, b) => a.created_at.localeCompare(b.created_at));\n  const last = cs[cs.length - 1];\n  const fejl = cs.filter((c) => c.body.includes(MARK_FAIL)).length;\n  const ny = labels.includes('Ideas') && fejl < 3;   // højst 3 forsøg ved ugyldigt AI-svar\n  const svar = labels.includes('Ready for approval') && last && !last.body.includes(MARK_REFINE);\n  if (!ny && !svar) continue;\n  out.push({ json: {\n    number: i.number, title: i.title, body: i.body || '', reason: ny ? 'ny opgave' : 'svar fra dig',\n    comments: cs.filter((c) => !c.body.includes(MARK_FAIL)).map((c) => ({\n      ai: c.body.includes(MARK_REFINE) || c.body.includes('<!-- factory:'),\n      body: c.body.replace(/<!-- factory:[a-z-]+ -->/g, '').trim(),\n    })),\n  } });\n}\nreturn out;"
+      },
+      "name": "Find opgaver",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ],
+      "id": "d029cf50-67fa-8431-11b9-ad6790cc1312"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.github.com/repos/ZoniD/arcnordic-factory/issues/{{ $json.number }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ labels: ['Refining'] }) }}"
+      },
+      "name": "Sæt Refining",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        300
+      ],
+      "id": "d2b3097d-83cd-062a-4a11-726005cc1121",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ghFactoryCred001",
+          "name": "GitHub arcnordic-factory"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Bygger beskeden til modellen: systemprompt fra factory/prompts/refine-system-prompt.md\n// og opgaven med hele kommentarhistorikken.\nconst SYSTEM = \"Du er spec-forfatter i en softwarefabrik. Du omskriver en grov opgave til en klar specifikation, som en kodeagent kan bygge uden at gætte. Du skriver på dansk.\\n\\n## Kontekst\\n- Repoet `arcnordic-factory` har to dele: `factory/` (n8n-workflows og runner) og `app/` (små byggeværktøjer i React + TypeScript med Vitest).\\n- `app/` er en demo for det opdigtede firma \\\"Fiktiv Rådgivning A/S\\\". Alle data og regler er fiktive og ligger i `app/data/`.\\n- Der bygges én opgave ad gangen. Et menneske godkender din specifikation, før noget bygges. Du godkender aldrig selv.\\n\\n## Din opgave\\n1. Læs titlen, beskrivelsen og eventuelle tidligere kommentarer (svar på dine spørgsmål).\\n2. Udfyld skabelonen nedenfor præcis med de samme overskrifter i samme rækkefølge.\\n3. Opfind ikke tal, grænser, formler eller forretningsregler. Mangler de, så stil et spørgsmål, og skriv `[AFKLARES: ...]` på stedet.\\n4. Skriv acceptkriterier som Givet/Når/Så, så de kan blive til tests. Markér det, der kun kan tjekkes i hånden, med \\\"(manuelt)\\\".\\n5. Er opgaven for stor (Størrelse L), så foreslå hvordan den deles i mindre opgaver.\\n6. Stil højst 3 spørgsmål, kun dem der ændrer hvad der bygges. Ingen spørgsmål er fint.\\n7. Afsnittet Begrænsninger skal altid indeholde disse tre standardregler, plus dem opgaven selv nævner:\\n   - Ingen nye afhængigheder, medmindre opgaven tillader det\\n   - Ændr ikke eksisterende tests eller .github/\\n   - Arbejd kun i den mappe, der står under Område\\n8. Er der tidligere kommentarer fra Mennesket, så er de svar på dine spørgsmål. Brug dem, og stil ikke det samme spørgsmål igen.\\n\\n## Skabelon\\n## Opgave\\n## Hvorfor\\n## Område\\n## Afhænger af\\n## Krav\\n## Data og regler\\n## Begrænsninger\\n## Acceptkriterier\\n## Uden for scope\\n## Størrelse\\n\\n## Output\\nSvar KUN med gyldig JSON, uden kodeblok og uden tekst før eller efter:\\n{\\n  \\\"spec\\\": \\\"<hele specifikationen som markdown med overskrifterne ovenfor>\\\",\\n  \\\"questions\\\": [\\\"<spørgsmål 1>\\\", \\\"...\\\"],\\n  \\\"ready\\\": true | false,\\n  \\\"advice\\\": \\\"<1-3 sætninger til mennesket: er den klar til godkendelse, og hvad er risikoen>\\\"\\n}\\n`ready` er kun true, hvis der ingen `[AFKLARES: ...]` er tilbage og størrelsen ikke er L.\\n\";\nconst t = $('Find opgaver').item.json;\nconst historik = t.comments.map((c) => (c.ai ? 'AI-trinnet' : 'Mennesket') + ':\\n' + c.body).join('\\n\\n---\\n\\n') || 'ingen';\nconst user = `Titel: ${t.title}\\n\\nBeskrivelse:\\n${t.body || '(tom)'}\\n\\nTidligere kommentarer:\\n${historik}`;\nreturn { json: { number: t.number, ollama: {\n  model: \"gpt-oss:20b\", stream: false, format: 'json',\n  options: { temperature: 0.2, num_ctx: 16384 },\n  messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: user }],\n} } };",
+        "mode": "runOnceForEachItem"
+      },
+      "name": "Byg prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ],
+      "id": "111827d6-ff6d-1027-c56f-b16df22f8d77"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/api/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ollama) }}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "name": "AI-trin (gpt-oss:20b)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        300
+      ],
+      "id": "d9bc91c1-aef5-fae4-7af1-3a7faf33d6a7",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "const MARK_REFINE = \"<!-- factory:refine -->\";\nconst MARK_FAIL = \"<!-- factory:refine-fejl -->\";\nconst MARK_START = \"<!-- factory:start -->\";\nconst MARK_PR = \"<!-- factory:pr -->\";\nconst labelsOf = (i) => i.labels.map((l) => l.name);\nconst issueNo = (c) => Number(c.issue_url.split('/').pop());\n\n// Stoler ikke blindt på modellen: svaret skal være gyldig JSON med alle afsnit fra skabelonen.\nconst HEADINGS = [\"Opgave\", \"Hvorfor\", \"Område\", \"Afhænger af\", \"Krav\", \"Data og regler\", \"Begrænsninger\", \"Acceptkriterier\", \"Uden for scope\", \"Størrelse\"];\nconst n = $('Byg prompt').item.json.number;\nlet j = null, fejl = null;\ntry { j = JSON.parse($json.message.content); } catch (e) { fejl = 'ugyldig JSON'; }\nif (!fejl && typeof j.spec !== 'string') fejl = 'mangler spec';\nif (!fejl) {\n  const mangler = HEADINGS.filter((h) => !j.spec.includes('## ' + h));\n  if (mangler.length) fejl = 'mangler afsnit: ' + mangler.join(', ');\n}\nif (fejl) return { json: { number: n, label: 'Ideas',\n  comment: `${MARK_REFINE}\\n${MARK_FAIL}\\n⚠️ AI-trinnet gav et ugyldigt svar (${fejl}). Fabrikken prøver igen (højst 3 gange).` } };\n\nconst q = Array.isArray(j.questions) ? j.questions.filter(Boolean) : [];\nconst ready = j.ready === true && !j.spec.includes('[AFKLARES') && q.length === 0;\nconst comment = [\n  MARK_REFINE,\n  '## 🤖 Forslag til specifikation',\n  `**Klar til godkendelse:** ${ready ? '✅ ja' : '❌ ikke endnu'}`,\n  `**Råd:** ${j.advice || '-'}`,\n  q.length ? '### Spørgsmål til dig\\n' + q.map((x, k) => `${k + 1}. ${x}`).join('\\n') : '',\n  '---',\n  j.spec,\n  '---',\n  '_Svar i en kommentar for at få en ny version, eller sæt labelen **Approved**, når du er tilfreds. AI-trinnet godkender aldrig selv._',\n].filter(Boolean).join('\\n\\n');\nreturn { json: { number: n, label: 'Ready for approval', comment } };",
+        "mode": "runOnceForEachItem"
+      },
+      "name": "Tjek svar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        300
+      ],
+      "id": "5a776e60-7dc2-3709-c0b9-64039a73ccee"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/ZoniD/arcnordic-factory/issues/{{ $json.number }}/comments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ body: $json.comment }) }}"
+      },
+      "name": "Skriv kommentar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2160,
+        300
+      ],
+      "id": "6716ccc8-9414-686e-f788-f4012902b037",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ghFactoryCred001",
+          "name": "GitHub arcnordic-factory"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.github.com/repos/ZoniD/arcnordic-factory/issues/{{ $('Tjek svar').item.json.number }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ labels: [$('Tjek svar').item.json.label] }) }}"
+      },
+      "name": "Sæt label",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        300
+      ],
+      "id": "6f8381b3-eb81-1928-d1d6-52eb76aadb50",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ghFactoryCred001",
+          "name": "GitHub arcnordic-factory"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    }
+  ],
+  "connections": {
+    "Hvert 2. minut": {
+      "main": [
+        [
+          {
+            "node": "Hent åbne issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hent åbne issues": {
+      "main": [
+        [
+          {
+            "node": "Hent kommentarer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hent kommentarer": {
+      "main": [
+        [
+          {
+            "node": "Find opgaver",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find opgaver": {
+      "main": [
+        [
+          {
+            "node": "Sæt Refining",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sæt Refining": {
+      "main": [
+        [
+          {
+            "node": "Byg prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Byg prompt": {
+      "main": [
+        [
+          {
+            "node": "AI-trin (gpt-oss:20b)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI-trin (gpt-oss:20b)": {
+      "main": [
+        [
+          {
+            "node": "Tjek svar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tjek svar": {
+      "main": [
+        [
+          {
+            "node": "Skriv kommentar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skriv kommentar": {
+      "main": [
+        [
+          {
+            "node": "Sæt label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen"
+  },
+  "pinData": {},
+  "tags": []
+}
