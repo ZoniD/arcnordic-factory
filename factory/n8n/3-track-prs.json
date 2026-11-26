@@ -1,0 +1,352 @@
+{
+  "id": "factoryTrackPR01",
+  "name": "Fabrik 3 – Følg pull requests (Your QA → Done)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "name": "Hvert 2. minut",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ],
+      "id": "fe8c1857-2e71-e1eb-a8a9-35782742053e"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/repos/ZoniD/arcnordic-factory/pulls?state=all&sort=updated&direction=desc&per_page=50",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "name": "Hent pull requests",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "id": "2c8c4c83-e0a7-5f11-dcfd-704aef70af94",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ghFactoryCred001",
+          "name": "GitHub arcnordic-factory"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/repos/ZoniD/arcnordic-factory/issues?state=all&per_page=100",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "name": "Hent alle issues",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        300
+      ],
+      "id": "3777ebba-37de-3dc4-1db2-bb5ef885f87d",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ghFactoryCred001",
+          "name": "GitHub arcnordic-factory"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/repos/ZoniD/arcnordic-factory/issues/comments?sort=created&direction=desc&per_page=100",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "name": "Hent kommentarer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        300
+      ],
+      "id": "6793cb80-a423-03ff-364f-19ebd847c98b",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ghFactoryCred001",
+          "name": "GitHub arcnordic-factory"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const MARK_REFINE = \"<!-- factory:refine -->\";\nconst MARK_FAIL = \"<!-- factory:refine-fejl -->\";\nconst MARK_START = \"<!-- factory:start -->\";\nconst MARK_PR = \"<!-- factory:pr -->\";\nconst labelsOf = (i) => i.labels.map((l) => l.name);\nconst issueNo = (c) => Number(c.issue_url.split('/').pop());\n\n// Kobler pull requests til opgaver via branchnavnet issue-N.\n//  Building + åben PR (opdateret efter start)  -> Your QA\n//  Your QA + PR merget eller lukket             -> Done (issuet lukkes)\n//  issue lukket uden Done                       -> Done\nconst prs = JSON.parse($('Hent pull requests').first().json.data);\nconst issues = JSON.parse($('Hent alle issues').first().json.data).filter((i) => !i.pull_request);\nconst comments = JSON.parse($('Hent kommentarer').first().json.data);\nconst out = [];\nfor (const i of issues) {\n  const labels = labelsOf(i);\n  if (labels.includes('Done')) continue;\n  const pr = prs.find((p) => p.head.ref === `issue-${i.number}`);\n  const starts = comments.filter((c) => issueNo(c) === i.number && c.body.includes(MARK_START))\n    .map((c) => c.created_at).sort();\n  const startTid = starts[starts.length - 1] || '';\n  if (i.state === 'closed') {\n    const note = pr && pr.merged_at ? `✅ PR #${pr.number} er merget. Opgaven er færdig.` : '🗑️ Issuet er lukket uden merge.';\n    out.push({ json: { number: i.number, patch: { labels: ['Done'] }, note } });\n  } else if (pr && pr.state === 'open' && labels.includes('Building') && pr.updated_at > startTid) {\n    out.push({ json: { number: i.number, patch: { labels: ['Your QA'] },\n      note: `🔍 PR #${pr.number} er klar til din review: ${pr.html_url}\\n\\nMerge den, luk den, eller send opgaven tilbage med en kommentar og labelen **Approved**.` } });\n  } else if (pr && pr.state === 'closed' && labels.includes('Your QA')) {\n    const note = pr.merged_at ? `✅ PR #${pr.number} er merget. Opgaven er færdig.` : `🗑️ PR #${pr.number} blev lukket uden merge.`;\n    out.push({ json: { number: i.number, patch: { labels: ['Done'], state: 'closed' }, note } });\n  }\n}\nreturn out;"
+      },
+      "name": "Find ændringer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        300
+      ],
+      "id": "bf0d382b-52f9-9119-2c9e-7a0d32309ce0"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.github.com/repos/ZoniD/arcnordic-factory/issues/{{ $json.number }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.patch) }}"
+      },
+      "name": "Opdatér issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        300
+      ],
+      "id": "aedf7799-dd07-e05e-292b-7d44816949f5",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ghFactoryCred001",
+          "name": "GitHub arcnordic-factory"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/ZoniD/arcnordic-factory/issues/{{ $('Find ændringer').item.json.number }}/comments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ body: '<!-- factory:pr -->\\n' + $('Find ændringer').item.json.note }) }}"
+      },
+      "name": "Skriv status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        300
+      ],
+      "id": "685b0c58-4615-5d39-804f-dfc3f8d7f0e7",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ghFactoryCred001",
+          "name": "GitHub arcnordic-factory"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    }
+  ],
+  "connections": {
+    "Hvert 2. minut": {
+      "main": [
+        [
+          {
+            "node": "Hent pull requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hent pull requests": {
+      "main": [
+        [
+          {
+            "node": "Hent alle issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hent alle issues": {
+      "main": [
+        [
+          {
+            "node": "Hent kommentarer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hent kommentarer": {
+      "main": [
+        [
+          {
+            "node": "Find ændringer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find ændringer": {
+      "main": [
+        [
+          {
+            "node": "Opdatér issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Opdatér issue": {
+      "main": [
+        [
+          {
+            "node": "Skriv status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen"
+  },
+  "pinData": {},
+  "tags": []
+}

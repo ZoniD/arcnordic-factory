@@ -1,0 +1,236 @@
+{
+  "id": "factoryStart0001",
+  "name": "Fabrik 2 – Start opgave (Approved → Building)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "name": "Hvert 1. minut",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ],
+      "id": "d6a771b5-7214-b5e6-b057-7ddf8686d900"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/repos/ZoniD/arcnordic-factory/issues?state=open&per_page=100",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "name": "Hent åbne issues",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "id": "e318f7d9-478a-7e78-7bdc-6ec2f0804759",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ghFactoryCred001",
+          "name": "GitHub arcnordic-factory"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "const MARK_REFINE = \"<!-- factory:refine -->\";\nconst MARK_FAIL = \"<!-- factory:refine-fejl -->\";\nconst MARK_START = \"<!-- factory:start -->\";\nconst MARK_PR = \"<!-- factory:pr -->\";\nconst labelsOf = (i) => i.labels.map((l) => l.name);\nconst issueNo = (c) => Number(c.issue_url.split('/').pop());\n\n// Én opgave ad gangen: kun hvis intet er i Building eller Waiting for you.\nconst issues = JSON.parse($('Hent åbne issues').first().json.data).filter((i) => !i.pull_request);\nconst busy = issues.some((i) => labelsOf(i).includes('Building') || labelsOf(i).includes('Waiting for you'));\nif (busy) return [];\nconst next = issues.filter((i) => labelsOf(i).includes('Approved')).sort((a, b) => a.number - b.number)[0];\nif (!next) return [];\nconst n = next.number;\nconst comment = [\n  MARK_START,\n  `## 🏭 Klar til at bygge (issue #${n})`,\n  'Basic A: start kodeagenten selv i repoet:',\n  '```sh',\n  'git checkout main && git pull',\n  `git checkout -b issue-${n}`,\n  `claude \"Byg GitHub-issue #${n}. Læs det med: gh issue view ${n} --comments. Brug den seneste specifikation fra AI-trinnet og mine svar. Følg CLAUDE.md, og spørg mig, hvis noget er uklart.\"`,\n  '```',\n  'Når agenten er færdig:',\n  '```sh',\n  `git push -u origin issue-${n}`,\n  `gh pr create --fill --body \"Closes #${n}\"`,\n  '```',\n  'Fabrikken ser pull requesten og flytter opgaven til **Your QA**.',\n].join('\\n');\nreturn [{ json: { number: n, comment } }];"
+      },
+      "name": "Vælg næste opgave",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "id": "fd72e972-43d4-d30a-1c66-0e9fca94f0d9"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.github.com/repos/ZoniD/arcnordic-factory/issues/{{ $json.number }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ labels: ['Building'] }) }}"
+      },
+      "name": "Sæt Building",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        300
+      ],
+      "id": "6499af99-21a9-3e86-74c4-5d864e4fb92b",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ghFactoryCred001",
+          "name": "GitHub arcnordic-factory"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/ZoniD/arcnordic-factory/issues/{{ $('Vælg næste opgave').item.json.number }}/comments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ body: $('Vælg næste opgave').item.json.comment }) }}"
+      },
+      "name": "Skriv instruktion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        300
+      ],
+      "id": "daad1241-f971-e4ce-0708-3b8df2de814a",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ghFactoryCred001",
+          "name": "GitHub arcnordic-factory"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    }
+  ],
+  "connections": {
+    "Hvert 1. minut": {
+      "main": [
+        [
+          {
+            "node": "Hent åbne issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hent åbne issues": {
+      "main": [
+        [
+          {
+            "node": "Vælg næste opgave",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vælg næste opgave": {
+      "main": [
+        [
+          {
+            "node": "Sæt Building",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sæt Building": {
+      "main": [
+        [
+          {
+            "node": "Skriv instruktion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen"
+  },
+  "pinData": {},
+  "tags": []
+}
